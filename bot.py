@@ -137,8 +137,8 @@ async def cmd_balance(m: Message):
     except Exception as e:
         return await m.answer(html.escape(str(e)))
     lines = []
-    for a in state["accounts"].values():
-        s = f'{a["label"]}: <b>{money(a["balance"], a["currency"])}</b>'
+    for n, a in enumerate(state["accounts"].values(), 1):
+        s = f'{n}. {a["label"]}: <b>{money(a["balance"], a["currency"])}</b>'
         if a["credit"]:
             s += f' (власні: {money(a["balance"] - a["credit"], a["currency"])})'
         lines.append(s)
@@ -147,19 +147,28 @@ async def cmd_balance(m: Message):
 
 @router.message(Command("last"))
 async def cmd_last(m: Message):
+    parts = (m.text or "").split()
     try:
         await refresh()
-        acc_id = next((i for i, a in state["accounts"].items() if a["currency"] == 980), "0")
+        ids = list(state["accounts"])
+        if not ids:
+            raise RuntimeError("Рахунків не знайдено")
+        if len(parts) > 1 and parts[1].isdigit() and 1 <= int(parts[1]) <= len(ids):
+            acc_id = ids[int(parts[1]) - 1]
+        else:
+            acc_id = next((i for i, a in state["accounts"].items() if a["currency"] == 980), ids[0])
         now = int(time.time())
         items = await mono("GET", f"/personal/statement/{acc_id}/{now - 7 * 86400}/{now}")
     except Exception as e:
         return await m.answer(html.escape(str(e)))
-    acc = state["accounts"].get(acc_id, {"currency": 980})
+    acc = state["accounts"][acc_id]
+    head = f'<b>{html.escape(acc["label"])}</b> за 7 днів\n'
     if not items:
-        return await m.answer("За 7 днів операцій немає")
+        return await m.answer(head + "Операцій немає. Інша картка: /last 2, /last 3 "
+                                     "(номери з /balance)")
     out = [f'{"🔴" if i["amount"] < 0 else "🟢"} {money(i["amount"], acc["currency"])} — '
            f'{html.escape(i.get("description", ""))}' for i in items[:10]]
-    await m.answer("\n".join(out))
+    await m.answer(head + "\n".join(out))
 
 
 async def set_webhook():
